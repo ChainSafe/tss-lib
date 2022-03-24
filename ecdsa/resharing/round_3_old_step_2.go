@@ -24,7 +24,6 @@ func (round *round3) Start() *tss.Error {
 	if !round.ReSharingParams().IsOldCommittee() {
 		return nil
 	}
-	// ~~round.allOldOK()~~ // old parties that are also in new committee also need to wait for D_i commitments
 
 	Pi := round.PartyID()
 	i := Pi.Index
@@ -33,15 +32,17 @@ func (round *round3) Start() *tss.Error {
 	for j, Pj := range round.NewParties().IDs() {
 		share := round.temp.NewShares[j]
 		r3msg1 := NewDGRound3Message1(Pj, round.PartyID(), share)
-		if i == j { // cache own share
+
+		if i != j { // send share_j directly to each player_j but yourself
+			round.out <- r3msg1
+		} else { // cache own share
 			round.temp.dgRound3Message1s[i] = r3msg1
 		}
-		round.out <- r3msg1
 	}
 
 	vDeCmt := round.temp.VD
 	r3msg2 := NewDGRound3Message2(
-		round.NewParties().IDs() /*.Exclude(round.PartyID())*/, round.PartyID(), // broadcast Di to **all** players in the new set
+		round.NewParties().IDs().Exclude(round.PartyID()), round.PartyID(),
 		vDeCmt)
 	round.temp.dgRound3Message2s[i] = r3msg2
 	round.out <- r3msg2
@@ -66,6 +67,9 @@ func (round *round3) Update() (bool, *tss.Error) {
 	}
 	// accept messages from old -> new committee
 	for j, msg1 := range round.temp.dgRound3Message1s {
+		if round.oldOK[j] {
+			continue
+		}
 		if msg1 == nil || !round.CanAccept(msg1) {
 			return false, nil
 		}

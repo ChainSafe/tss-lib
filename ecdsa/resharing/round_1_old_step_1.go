@@ -53,14 +53,14 @@ func (round *round1) Start() *tss.Error {
 	}
 
 	// 2.
-	// Compute [v_i0, ..., v_it`], [s_i1, . . . , s_in`] ← FeldmanShare(g, w_i,t`, q, [p'_1, ...,p'_n'])
+	// Compute [v_i0, ..., v_it`], [s_i1, ..., s_in`] ← FeldmanShare(g,w_i,t`,q,[k'_1, ...,k'_n'])
 	vi, shares, err := vss.Create(round.NewThreshold(), wi, newKs)
 	if err != nil {
 		return round.WrapError(err, round.PartyID())
 	}
 
 	// 3.
-	// Compute [Ci, Di] = Commit([vi0, . . . , vit` ])
+	// Compute (C, D) = Commit([v_i0, . . . , v_it` ])
 	flatVis, err := crypto.FlattenECPoints(vi)
 	if err != nil {
 		return round.WrapError(err, round.PartyID())
