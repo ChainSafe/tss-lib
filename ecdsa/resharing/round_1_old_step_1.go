@@ -93,6 +93,10 @@ func (round *round1) Update() (bool, *tss.Error) {
 	}
 	// accept messages from old -> new committee
 	for j, msg := range round.temp.dgRound1Messages {
+		if round.oldOK[j] {
+			continue
+		}
+
 		if msg == nil || !round.CanAccept(msg) {
 			return false, nil
 		}
