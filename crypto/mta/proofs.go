@@ -192,7 +192,7 @@ func (pf *ProofBobWC) Verify(pk *paillier.PublicKey, NTilde, h1, h2, c1, c2 *big
 
 	q := tss.EC().Params().N
 	q3 := new(big.Int).Mul(q, q)
-	q3.Mul(q3, q)
+	q3 = new(big.Int).Mul(q, q3)
 
 	gcd := big.NewInt(0)
 	if pf.S.Cmp(zero) == 0 {
