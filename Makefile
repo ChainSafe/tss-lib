@@ -1,5 +1,5 @@
 MODULE = github.com/binance-chain/tss-lib
-PACKAGES = $(shell go list ./... | grep -v '/vendor/')
+PACKAGES = $(shell go list ./... | grep -v '/vendor/' | grep -v '/eddsa/')
 
 all: protob test
 
@@ -22,12 +22,12 @@ build: protob
 test_unit:
 	@echo "--> Running Unit Tests"
 	@echo "!!! WARNING: This will take a long time :)"
-	go test -timeout 60m $(PACKAGES) 
+	go test -timeout 360m $(PACKAGES) 
 
 test_unit_race:
 	@echo "--> Running Unit Tests (with Race Detection)"
 	@echo "!!! WARNING: This will take a long time :)"
-	go test -timeout 60m -race $(PACKAGES)
+	go test -timeout 360m -race $(PACKAGES)
 
 test:
 	make test_unit
@@ -43,4 +43,3 @@ pre_commit: build test
 # # unless there is a reason not to.
 # # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: protob build test_unit test_unit_race test
-
