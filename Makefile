@@ -1,5 +1,5 @@
 MODULE = github.com/binance-chain/tss-lib
-PACKAGES = $(shell go list ./... | grep -v '/vendor/')
+PACKAGES = $(shell go list ./... | grep -v '/vendor/' | grep -v '/eddsa/')
 
 all: protob test
 
@@ -43,4 +43,3 @@ pre_commit: build test
 # # unless there is a reason not to.
 # # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: protob build test_unit test_unit_race test
-

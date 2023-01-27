@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	testParticipants = test.TestParticipants
-	testThreshold    = test.TestThreshold
+	testParticipants          = test.TestParticipants
+	testThreshold             = test.TestThreshold
+	testOldAndNewParticipants = test.TestParticipants
 )
 
 func setUp(level string) {
@@ -45,8 +46,8 @@ func TestE2EConcurrent(t *testing.T) {
 	threshold, newThreshold := testThreshold, testThreshold
 
 	// PHASE: load keygen fixtures
-	firstPartyIdx, extraParties := 0, 1 // extra can be 0 to N-first
-	oldKeys, oldPIDs, err := keygen.LoadKeygenTestFixtures(testThreshold+1+extraParties+firstPartyIdx, firstPartyIdx)
+	firstPartyIdx, extraParties := 0, testOldAndNewParticipants-testThreshold // extra can be 0 to N-first
+	oldKeys, oldPIDs, err := keygen.LoadKeygenTestFixtures(testThreshold+extraParties+firstPartyIdx, firstPartyIdx)
 	assert.NoError(t, err, "should load keygen fixtures")
 
 	// PHASE: resharing
@@ -56,7 +57,13 @@ func TestE2EConcurrent(t *testing.T) {
 	if err != nil {
 		common.Logger.Info("No test fixtures were found, so the safe primes will be generated from scratch. This may take a while...")
 	}
-	newPIDs := tss.GenerateTestPartyIDs(testParticipants)
+
+	newPIDs := tss.GenerateTestPartyIDs(testParticipants - testOldAndNewParticipants)
+
+	for i := 0; i < testOldAndNewParticipants; i++ {
+		newPIDs = append(newPIDs, oldPIDs[i])
+	}
+
 	newP2PCtx := tss.NewPeerContext(newPIDs)
 	newPCount := len(newPIDs)
 
@@ -70,31 +77,32 @@ func TestE2EConcurrent(t *testing.T) {
 
 	updater := test.SharedPartyUpdater
 
+	oldCommitteeMap := make(map[*tss.PartyID]*LocalParty)
 	// init the old parties first
 	for j, pID := range oldPIDs {
 		params := tss.NewReSharingParameters(oldP2PCtx, newP2PCtx, pID, testParticipants, threshold, newPCount, newThreshold)
 		P := NewLocalParty(params, oldKeys[j], outCh, endCh).(*LocalParty) // discard old key data
+		oldCommitteeMap[pID] = P
 		oldCommittee = append(oldCommittee, P)
 	}
 	// init the new parties
 	for j, pID := range newPIDs {
 		params := tss.NewReSharingParameters(oldP2PCtx, newP2PCtx, pID, testParticipants, threshold, newPCount, newThreshold)
-		save := keygen.NewLocalPartySaveData(newPCount)
-		if j < len(fixtures) && len(newPIDs) <= len(fixtures) {
-			save.LocalPreParams = fixtures[j].LocalPreParams
+
+		var P *LocalParty
+		if p, isOld := oldCommitteeMap[pID]; isOld {
+			P = p
+		} else {
+			save := keygen.NewLocalPartySaveData(newPCount)
+			if j < len(fixtures) && len(newPIDs) <= len(fixtures) {
+				save.LocalPreParams = fixtures[j].LocalPreParams
+			}
+			P = NewLocalParty(params, save, outCh, endCh).(*LocalParty)
 		}
-		P := NewLocalParty(params, save, outCh, endCh).(*LocalParty)
+
 		newCommittee = append(newCommittee, P)
 	}
 
-	// start the new parties; they will wait for messages
-	for _, P := range newCommittee {
-		go func(P *LocalParty) {
-			if err := P.Start(); err != nil {
-				errCh <- err
-			}
-		}(P)
-	}
 	// start the old parties; they will send messages
 	for _, P := range oldCommittee {
 		go func(P *LocalParty) {
@@ -102,6 +110,17 @@ func TestE2EConcurrent(t *testing.T) {
 				errCh <- err
 			}
 		}(P)
+	}
+
+	// start the new parties; they will wait for messages
+	for _, P := range newCommittee {
+		if _, ok := oldCommitteeMap[P.PartyID()]; !ok {
+			go func(P *LocalParty) {
+				if err := P.Start(); err != nil {
+					errCh <- err
+				}
+			}(P)
+		}
 	}
 
 	newKeys := make([]keygen.LocalPartySaveData, len(newCommittee))
@@ -122,12 +141,17 @@ func TestE2EConcurrent(t *testing.T) {
 			}
 			if msg.IsToOldCommittee() || msg.IsToOldAndNewCommittees() {
 				for _, destP := range dest[:len(oldCommittee)] {
-					go updater(oldCommittee[destP.Index], msg, errCh)
+					if destP != nil {
+						go updater(oldCommittee[destP.Index], msg, errCh)
+					}
 				}
 			}
+
 			if !msg.IsToOldCommittee() || msg.IsToOldAndNewCommittees() {
 				for _, destP := range dest {
-					go updater(newCommittee[destP.Index], msg, errCh)
+					if destP != nil {
+						go updater(newCommittee[destP.Index], msg, errCh)
+					}
 				}
 			}
 
@@ -141,8 +165,8 @@ func TestE2EConcurrent(t *testing.T) {
 				endedOldCommittee++
 			}
 			atomic.AddInt32(&reSharingEnded, 1)
-			if atomic.LoadInt32(&reSharingEnded) == int32(len(oldCommittee)+len(newCommittee)) {
-				assert.Equal(t, len(oldCommittee), endedOldCommittee)
+			if atomic.LoadInt32(&reSharingEnded) == int32(len(oldCommittee)+len(newCommittee)-testOldAndNewParticipants) {
+				assert.Equal(t, len(oldCommittee)-testOldAndNewParticipants, endedOldCommittee)
 				t.Logf("Resharing done. Reshared %d participants", reSharingEnded)
 
 				// xj tests: BigXj == xj*G
